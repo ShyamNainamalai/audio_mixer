@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SonicEdit - Professional Audio Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- LameJS for MP3 Encoding -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-sidebar: #1e293b;
+            --accent: #3b82f6;
+            --track-bg: #334155;
+            --clip-bg: #60a5fa;
+            --playhead-color: #ef4444;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: #f1f5f9;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+            /* Prevents text selection across the app */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Allow selection only for file input label text if needed */
+        input[type="file"] {
+            user-select: auto;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+
+        .timeline-container {
+            position: relative;
+            background-image: 
+                linear-gradient(to right, #1e293b 1px, transparent 1px),
+                linear-gradient(to bottom, #1e293b 1px, transparent 1px);
+            background-size: 100px 100%, 100% 80px;
+            cursor: crosshair;
+        }
+
+        #playhead {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 2px;
+            height: 100%;
+            background-color: var(--playhead-color);
+            z-index: 50;
+            pointer-events: none;
+        }
+
+        #playhead-handle {
+            position: absolute;
+            top: -4px;
+            left: -8px;
+            width: 18px;
+            height: 24px;
+            background-color: var(--playhead-color);
+            clip-path: polygon(0% 0%, 100% 0%, 100% 60%, 50% 100%, 0% 60%);
+            cursor: ew-resize;
+            pointer-events: auto;
+            z-index: 51;
+            transition: transform 0.1s;
+        }
+        #playhead-handle:hover {
+            transform: scale(1.1);
+        }
+
+        .clip {
+            position: absolute;
+            height: 70px;
+            background: var(--clip-bg);
+            border: 1px solid #2563eb;
+            border-radius: 4px;
+            cursor: grab;
+            overflow: hidden;
+            user-select: none;
+            transition: outline 0.1s;
+        }
+        .clip:active {
+            cursor: grabbing;
+        }
+
+        .clip.selected {
+            outline: 2px solid #fff;
+            z-index: 10;
+        }
+
+        .clip canvas {
+            width: 100%;
+            height: 100%;
+            opacity: 0.8;
+            pointer-events: none;
+        }
+
+        .track-row {
+            height: 80px;
+            border-bottom: 1px solid #334155;
+            position: relative;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <!-- Header / Toolbar -->
+    <header class="h-14 border-b border-slate-700 bg-slate-900 flex items-center justify-between px-4 flex-shrink-0 z-50">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 text-blue-500 font-bold text-xl">
+                <i data-lucide="waves"></i>
+                <span>SonicEdit</span>
+            </div>
+            <div class="h-6 w-px bg-slate-700 mx-2"></div>
+            <div class="flex items-center gap-2">
+                <button id="btn-play" class="p-2 hover:bg-slate-800 rounded text-green-400 transition" title="Play (Space)">
+                    <i data-lucide="play"></i>
+                </button>
+                <button id="btn-pause" class="p-2 hover:bg-slate-800 rounded text-yellow-400 hidden transition" title="Pause">
+                    <i data-lucide="pause"></i>
+                </button>
+                <button id="btn-stop" class="p-2 hover:bg-slate-800 rounded text-red-400 transition" title="Stop">
+                    <i data-lucide="square"></i>
+                </button>
+            </div>
+            <div class="text-sm font-mono bg-black px-3 py-1 rounded text-green-500 border border-slate-800" id="time-display">
+                00:00:00.00
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <!-- Zoom Controls -->
+            <div class="flex items-center bg-slate-800 rounded p-0.5 border border-slate-700">
+                <button id="btn-zoom-out" class="p-1.5 hover:bg-slate-700 rounded text-slate-300" title="Zoom Out (-)">
+                    <i data-lucide="zoom-out" class="w-4 h-4"></i>
+                </button>
+                <div id="zoom-text" class="px-2 text-[10px] font-mono text-slate-400 min-w-[40px] text-center">100%</div>
+                <button id="btn-zoom-in" class="p-1.5 hover:bg-slate-700 rounded text-slate-300" title="Zoom In (+)">
+                    <i data-lucide="zoom-in" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <div class="h-6 w-px bg-slate-700 mx-1"></div>
+
+            <button id="btn-split" class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-sm transition" title="Split selected clip (S)">
+                <i data-lucide="scissors" class="w-4 h-4 text-blue-400"></i>
+                Split
+            </button>
+            <button id="btn-delete" class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-sm transition" title="Delete selected clip (Del)">
+                <i data-lucide="trash-2" class="w-4 h-4 text-red-400"></i>
+                Delete
+            </button>
+            
+            <div class="h-6 w-px bg-slate-700 mx-1"></div>
+            
+            <div class="flex gap-1">
+                <button id="btn-download-wav" class="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm font-medium transition">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    WAV
+                </button>
+                <button id="btn-download-mp3" class="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium transition">
+                    <i data-lucide="music" class="w-4 h-4"></i>
+                    MP3
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-slate-800 border-r border-slate-700 flex flex-col flex-shrink-0">
+            <div class="p-4 border-b border-slate-700">
+                <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">File Library</h2>
+                <label class="block">
+                    <input type="file" id="file-input" multiple accept="audio/*" class="block w-full text-sm text-slate-400
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-full file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-blue-600 file:text-white
+                        hover:file:bg-blue-500 cursor-pointer
+                    ">
+                </label>
+            </div>
+            <div id="file-list" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                <div id="empty-library" class="text-center py-10 text-slate-500 italic text-sm">
+                    No files loaded yet.
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="flex-1 flex flex-col bg-slate-950 overflow-hidden relative">
+            <div class="h-8 bg-slate-900 border-b border-slate-700 flex relative overflow-hidden select-none cursor-ew-resize" id="timeline-ruler">
+            </div>
+
+            <div class="flex-1 overflow-auto custom-scrollbar relative" id="tracks-viewport">
+                <div id="timeline" class="timeline-container min-w-full" style="width: 10000px; height: 100%;">
+                    <div id="playhead">
+                        <div id="playhead-handle" title="Drag to scrub"></div>
+                    </div>
+                    <div id="track-layers">
+                        <div class="track-row" data-track="0"></div>
+                        <div class="track-row" data-track="1"></div>
+                        <div class="track-row" data-track="2"></div>
+                        <div class="track-row" data-track="3"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="loading-overlay" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] hidden">
+        <div class="text-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4 mx-auto"></div>
+            <p id="loading-text" class="text-slate-300">Processing audio...</p>
+        </div>
+    </div>
+
+    <script>
+        // Disable Right Click context menu
+        window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        const BASE_PIXELS_PER_SECOND = 100;
+        let PIXELS_PER_SECOND = 100;
+
+        const state = {
+            audioCtx: new (window.AudioContext || window.webkitAudioContext)(),
+            files: [], 
+            clips: [], 
+            selectedClipId: null,
+            isPlaying: false, 
+            isScrubbing: false,
+            currentTime: 0, 
+            startTime: 0, 
+            activeSources: [],
+            zoom: 1.0 // 1.0 = 100px per second
+        };
+
+        const fileInput = document.getElementById('file-input');
+        const fileList = document.getElementById('file-list');
+        const emptyLibrary = document.getElementById('empty-library');
+        const timeline = document.getElementById('timeline');
+        const playhead = document.getElementById('playhead');
+        const playheadHandle = document.getElementById('playhead-handle');
+        const timeDisplay = document.getElementById('time-display');
+        const btnPlay = document.getElementById('btn-play');
+        const btnPause = document.getElementById('btn-pause');
+        const btnStop = document.getElementById('btn-stop');
+        const btnSplit = document.getElementById('btn-split');
+        const btnDelete = document.getElementById('btn-delete');
+        const btnZoomIn = document.getElementById('btn-zoom-in');
+        const btnZoomOut = document.getElementById('btn-zoom-out');
+        const zoomText = document.getElementById('zoom-text');
+        const btnDownloadWav = document.getElementById('btn-download-wav');
+        const btnDownloadMp3 = document.getElementById('btn-download-mp3');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const trackRows = document.querySelectorAll('.track-row');
+        const timelineRuler = document.getElementById('timeline-ruler');
+        const tracksViewport = document.getElementById('tracks-viewport');
+
+        lucide.createIcons();
+
+        // --- Zooming Logic ---
+        function updateZoom(newZoom) {
+            state.zoom = Math.max(0.2, Math.min(10, newZoom));
+            PIXELS_PER_SECOND = BASE_PIXELS_PER_SECOND * state.zoom;
+            zoomText.textContent = `${Math.round(state.zoom * 100)}%`;
+            const maxDuration = Math.max(100, ...state.clips.map(c => c.startTime + c.duration)) + 60;
+            timeline.style.width = (maxDuration * PIXELS_PER_SECOND) + 'px';
+            renderRuler();
+            state.clips.forEach(clip => {
+                clip.element.style.left = (clip.startTime * PIXELS_PER_SECOND) + 'px';
+                clip.element.style.width = (clip.duration * PIXELS_PER_SECOND) + 'px';
+                drawWaveform(clip.element.querySelector('canvas'), clip.buffer);
+            });
+            updateUI();
+        }
+
+        btnZoomIn.onclick = () => updateZoom(state.zoom * 1.25);
+        btnZoomOut.onclick = () => updateZoom(state.zoom * 0.8);
+
+        // --- Navigation ---
+        function seekTo(pixels) {
+            state.currentTime = Math.max(0, pixels / PIXELS_PER_SECOND);
+            updateUI();
+            if (state.isPlaying) { stopPlayback(); startPlayback(); }
+        }
+
+        const handleNavigation = (e) => {
+            const rect = timeline.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            seekTo(x);
+        };
+
+        timelineRuler.onmousedown = (e) => {
+            state.isScrubbing = true;
+            handleNavigation(e);
+            const onMouseMove = (mE) => state.isScrubbing && handleNavigation(mE);
+            const onMouseUp = () => { state.isScrubbing = false; window.removeEventListener('mousemove', onMouseMove); };
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp, { once: true });
+        };
+
+        playheadHandle.onmousedown = (e) => {
+            e.preventDefault(); e.stopPropagation();
+            state.isScrubbing = true;
+            const onMouseMove = (mE) => state.isScrubbing && handleNavigation(mE);
+            const onMouseUp = () => { state.isScrubbing = false; window.removeEventListener('mousemove', onMouseMove); };
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp, { once: true });
+        };
+
+        timeline.onclick = (e) => {
+            if (e.target === timeline || e.target.classList.contains('track-row')) handleNavigation(e);
+        };
+
+        // --- Files ---
+        fileInput.onchange = async (e) => {
+            const files = Array.from(e.target.files);
+            showLoading("Decoding audio files...");
+            for (const file of files) {
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const audioBuffer = await state.audioCtx.decodeAudioData(arrayBuffer);
+                    const fileId = Math.random().toString(36).substr(2, 9);
+                    const fileData = { id: fileId, name: file.name, buffer: audioBuffer };
+                    state.files.push(fileData);
+                    addToFileLibrary(fileData);
+                    emptyLibrary.classList.add('hidden');
+                } catch (err) { console.error(err); }
+            }
+            hideLoading();
+            fileInput.value = '';
+        };
+
+        function addToFileLibrary(file) {
+            const div = document.createElement('div');
+            div.className = "p-2 bg-slate-700 hover:bg-slate-600 rounded cursor-grab flex items-center gap-2 group transition text-sm overflow-hidden";
+            div.draggable = true;
+            div.dataset.fileId = file.id;
+            div.innerHTML = `
+                <i data-lucide="file-audio" class="w-4 h-4 text-blue-400 flex-shrink-0"></i>
+                <span class="truncate flex-1">${file.name}</span>
+            `;
+            div.ondragstart = (e) => e.dataTransfer.setData('fileId', file.id);
+            fileList.appendChild(div);
+            lucide.createIcons();
+        }
+
+        // --- Timeline ---
+        trackRows.forEach(row => {
+            row.ondragover = (e) => { e.preventDefault(); row.classList.add('bg-slate-800/30'); };
+            row.ondragleave = () => row.classList.remove('bg-slate-800/30');
+            row.ondrop = (e) => {
+                e.preventDefault(); row.classList.remove('bg-slate-800/30');
+                const fileId = e.dataTransfer.getData('fileId');
+                if (!fileId) return;
+                const file = state.files.find(f => f.id === fileId);
+                const rect = row.getBoundingClientRect();
+                addClipToTimeline(file, parseInt(row.dataset.track), (e.clientX - rect.left) / PIXELS_PER_SECOND);
+            };
+        });
+
+        function addClipToTimeline(file, track, startTime) {
+            const clipId = Math.random().toString(36).substr(2, 9);
+            const clipEl = document.createElement('div');
+            clipEl.className = 'clip';
+            clipEl.dataset.id = clipId;
+            clipEl.style.width = (file.buffer.duration * PIXELS_PER_SECOND) + 'px';
+            clipEl.style.left = (startTime * PIXELS_PER_SECOND) + 'px';
+            const canvas = document.createElement('canvas');
+            clipEl.appendChild(canvas);
+            const clipData = { id: clipId, fileId: file.id, track, startTime, duration: file.buffer.duration, element: clipEl, buffer: file.buffer, offset: 0 };
+            state.clips.push(clipData);
+            document.querySelector(`.track-row[data-track="${track}"]`).appendChild(clipEl);
+            drawWaveform(canvas, file.buffer);
+            setupClipInteractions(clipData);
+            selectClip(clipId);
+        }
+
+        function drawWaveform(canvas, buffer) {
+            const width = canvas.width = canvas.parentElement.clientWidth;
+            const height = canvas.height = canvas.parentElement.clientHeight;
+            const ctx = canvas.getContext('2d');
+            const data = buffer.getChannelData(0);
+            const step = Math.ceil(data.length / width);
+            const amp = height / 2;
+            ctx.clearRect(0, 0, width, height);
+            ctx.strokeStyle = '#60a5fa';
+            ctx.beginPath();
+            ctx.moveTo(0, amp);
+            for (let i = 0; i < width; i++) {
+                let min = 1.0, max = -1.0;
+                for (let j = 0; j < step; j++) {
+                    const d = data[(i * step) + j];
+                    if (d < min) min = d; if (d > max) max = d;
+                }
+                ctx.lineTo(i, (1 + min) * amp); ctx.lineTo(i, (1 + max) * amp);
+            }
+            ctx.stroke();
+        }
+
+        function setupClipInteractions(clip) {
+            let dragging = false, sX = 0, sL = 0;
+            clip.element.onmousedown = (e) => {
+                if (e.button !== 0) return; // Allow only left-click dragging
+                e.stopPropagation(); selectClip(clip.id);
+                dragging = true; sX = e.clientX; sL = clip.startTime * PIXELS_PER_SECOND;
+                const onMM = (mE) => {
+                    if (!dragging) return;
+                    let nL = Math.max(0, sL + (mE.clientX - sX));
+                    clip.element.style.left = nL + 'px';
+                    clip.startTime = nL / PIXELS_PER_SECOND;
+                };
+                const onMU = () => { dragging = false; window.removeEventListener('mousemove', onMM); };
+                window.addEventListener('mousemove', onMM);
+                window.addEventListener('mouseup', onMU, { once: true });
+            };
+        }
+
+        function selectClip(id) {
+            state.selectedClipId = id;
+            state.clips.forEach(c => c.element.classList.toggle('selected', c.id === id));
+        }
+
+        // --- Playback ---
+        btnPlay.onclick = startPlayback;
+        btnPause.onclick = stopPlayback;
+        btnStop.onclick = () => { stopPlayback(); state.currentTime = 0; updateUI(); };
+
+        function startPlayback() {
+            if (state.isPlaying) return;
+            if (state.audioCtx.state === 'suspended') state.audioCtx.resume();
+            state.isPlaying = true;
+            btnPlay.classList.add('hidden'); btnPause.classList.remove('hidden');
+            state.startTime = state.audioCtx.currentTime - state.currentTime;
+            state.clips.forEach(clip => {
+                if (clip.startTime + clip.duration > state.currentTime) {
+                    const source = state.audioCtx.createBufferSource();
+                    source.buffer = clip.buffer;
+                    source.connect(state.audioCtx.destination);
+                    const offset = Math.max(0, state.currentTime - clip.startTime);
+                    const when = Math.max(0, clip.startTime - state.currentTime);
+                    source.start(state.audioCtx.currentTime + when, offset + (clip.offset || 0));
+                    state.activeSources.push(source);
+                }
+            });
+            requestAnimationFrame(updateLoop);
+        }
+
+        function stopPlayback() {
+            state.isPlaying = false;
+            btnPlay.classList.remove('hidden'); btnPause.classList.add('hidden');
+            state.activeSources.forEach(s => { try { s.stop(); } catch(e) {} });
+            state.activeSources = [];
+        }
+
+        function updateLoop() {
+            if (!state.isPlaying) return;
+            state.currentTime = state.audioCtx.currentTime - state.startTime;
+            updateUI();
+            requestAnimationFrame(updateLoop);
+        }
+
+        function updateUI() {
+            playhead.style.left = (state.currentTime * PIXELS_PER_SECOND) + 'px';
+            const s = Math.floor(state.currentTime);
+            const ms = Math.floor((state.currentTime % 1) * 100);
+            timeDisplay.textContent = `${pad(Math.floor(s/3600))}:${pad(Math.floor((s%3600)/60))}:${pad(s%60)}.${pad(ms)}`;
+        }
+        function pad(n) { return n.toString().padStart(2, '0'); }
+
+        // --- Tools ---
+        btnSplit.onclick = () => {
+            if (!state.selectedClipId) return;
+            const clip = state.clips.find(c => c.id === state.selectedClipId);
+            if (state.currentTime > clip.startTime && state.currentTime < clip.startTime + clip.duration) {
+                const sP = state.currentTime - clip.startTime;
+                const nID = Math.random().toString(36).substr(2, 9);
+                const nD = clip.duration - sP;
+                clip.duration = sP; clip.element.style.width = (sP * PIXELS_PER_SECOND) + 'px';
+                const nEl = document.createElement('div');
+                nEl.className = 'clip'; nEl.dataset.id = nID;
+                nEl.style.width = (nD * PIXELS_PER_SECOND) + 'px';
+                nEl.style.left = (state.currentTime * PIXELS_PER_SECOND) + 'px';
+                const canvas = document.createElement('canvas'); nEl.appendChild(canvas);
+                const nClip = { id: nID, fileId: clip.fileId, track: clip.track, startTime: state.currentTime, duration: nD, element: nEl, buffer: clip.buffer, offset: (clip.offset || 0) + sP };
+                state.clips.push(nClip); clip.element.parentElement.appendChild(nEl);
+                drawWaveform(clip.element.querySelector('canvas'), clip.buffer);
+                drawWaveform(canvas, clip.buffer);
+                setupClipInteractions(nClip); selectClip(nID);
+            }
+        };
+
+        btnDelete.onclick = () => {
+            const idx = state.clips.findIndex(c => c.id === state.selectedClipId);
+            if (idx !== -1) { state.clips[idx].element.remove(); state.clips.splice(idx, 1); state.selectedClipId = null; }
+        };
+
+        // --- Exporting ---
+        async function getMixedBuffer() {
+            if (state.clips.length === 0) return null;
+            const maxD = Math.max(...state.clips.map(c => c.startTime + c.duration));
+            const oCtx = new OfflineAudioContext(2, 44100 * maxD, 44100);
+            for (const c of state.clips) {
+                const s = oCtx.createBufferSource(); s.buffer = c.buffer; s.connect(oCtx.destination);
+                s.start(c.startTime, c.offset || 0, c.duration);
+            }
+            return await oCtx.startRendering();
+        }
+
+        btnDownloadWav.onclick = async () => {
+            const buf = await getMixedBuffer();
+            if (!buf) return;
+            showLoading("Exporting WAV...");
+            const blob = bufferToWave(buf, buf.length);
+            downloadBlob(blob, 'sonic-edit.wav');
+            hideLoading();
+        };
+
+        btnDownloadMp3.onclick = async () => {
+            const buf = await getMixedBuffer();
+            if (!buf) return;
+            showLoading("Encoding MP3...");
+            setTimeout(() => {
+                const blob = bufferToMp3(buf);
+                downloadBlob(blob, 'sonic-edit.mp3');
+                hideLoading();
+            }, 100);
+        };
+
+        function downloadBlob(blob, name) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+        }
+
+        function bufferToWave(abuffer, len) {
+            let n = abuffer.numberOfChannels, l = len * n * 2 + 44, b = new ArrayBuffer(l), v = new DataView(b), p = 0;
+            const s32 = (d) => { v.setUint32(p, d, true); p += 4; };
+            const s16 = (d) => { v.setUint16(p, d, true); p += 2; };
+            s32(0x46464952); s32(l - 8); s32(0x45564157); s32(0x20746d66); s32(16); s16(1); s16(n); s32(abuffer.sampleRate); s32(abuffer.sampleRate * 2 * n); s16(n * 2); s16(16); s32(0x61746164); s32(l - p - 4);
+            for(let i=0; i<len; i++) {
+                for(let c=0; c<n; c++) {
+                    let s = Math.max(-1, Math.min(1, abuffer.getChannelData(c)[i]));
+                    v.setInt16(p, (s < 0 ? s * 32768 : s * 32767), true); p += 2;
+                }
+            }
+            return new Blob([b], {type: "audio/wav"});
+        }
+
+        function bufferToMp3(audioBuffer, bitrate = 128) {
+            const channels = audioBuffer.numberOfChannels;
+            const sampleRate = audioBuffer.sampleRate;
+            const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, bitrate);
+            const mp3Data = [];
+            const samplesL = audioBuffer.getChannelData(0);
+            const samplesR = channels > 1 ? audioBuffer.getChannelData(1) : samplesL;
+            const l16 = new Int16Array(samplesL.length);
+            const r16 = new Int16Array(samplesR.length);
+            for (let i = 0; i < samplesL.length; i++) {
+                l16[i] = samplesL[i] < 0 ? samplesL[i] * 32768 : samplesL[i] * 32767;
+                r16[i] = samplesR[i] < 0 ? samplesR[i] * 32768 : samplesR[i] * 32767;
+            }
+            const blockSize = 1152;
+            for (let i = 0; i < l16.length; i += blockSize) {
+                const lc = l16.subarray(i, i + blockSize);
+                const rc = r16.subarray(i, i + blockSize);
+                const mp3buf = (channels === 2) ? mp3encoder.encodeBuffer(lc, rc) : mp3encoder.encodeBuffer(lc);
+                if (mp3buf.length > 0) mp3Data.push(mp3buf);
+            }
+            const flush = mp3encoder.flush();
+            if (flush.length > 0) mp3Data.push(flush);
+            return new Blob(mp3Data, { type: 'audio/mp3' });
+        }
+
+        function showLoading(text) { document.getElementById('loading-text').textContent = text; loadingOverlay.classList.remove('hidden'); }
+        function hideLoading() { loadingOverlay.classList.add('hidden'); }
+
+        // Setup Ruler
+        function renderRuler() {
+            timelineRuler.innerHTML = '';
+            const containerWidth = parseInt(timeline.style.width) || 10000;
+            const maxSeconds = Math.ceil(containerWidth / PIXELS_PER_SECOND);
+            let interval = 1;
+            if (state.zoom < 0.5) interval = 5;
+            if (state.zoom < 0.2) interval = 10;
+            for (let i = 0; i < maxSeconds; i += interval) {
+                const m = document.createElement('div');
+                m.className = 'absolute border-l border-slate-700 h-full flex items-end pb-1 px-1 text-[10px] text-slate-400 pointer-events-none';
+                m.style.left = (i * PIXELS_PER_SECOND) + 'px'; 
+                m.textContent = i + 's';
+                timelineRuler.appendChild(m);
+            }
+        }
+
+        renderRuler();
+
+        // Enhanced Keyboard Handlers
+        window.onkeydown = (e) => {
+            // Block Common Developer Tool Shortcuts
+            if (e.keyCode === 123) { // F12
+                e.preventDefault();
+                return false;
+            }
+            if (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74 || e.keyCode === 67)) { // Ctrl+Shift+I, J, C
+                e.preventDefault();
+                return false;
+            }
+            if (e.ctrlKey && e.keyCode === 85) { // Ctrl+U (View Source)
+                e.preventDefault();
+                return false;
+            }
+
+            // Normal Shortcuts
+            if (e.code === 'Space') { e.preventDefault(); state.isPlaying ? stopPlayback() : startPlayback(); }
+            if (e.code === 'Delete' || e.code === 'Backspace') btnDelete.onclick();
+            if (e.code === 'KeyS') btnSplit.onclick();
+            if (e.key === '+') btnZoomIn.onclick();
+            if (e.key === '-') btnZoomOut.onclick();
+        };
+
+    </script>
+</body>
+</html>
