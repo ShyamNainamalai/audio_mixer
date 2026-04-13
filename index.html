@@ -3,637 +3,578 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SonicEdit - Professional Audio Editor</title>
+    <title>Shyam's Studio Pro - Advanced Mixer & MP3 Export</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
     <!-- LameJS for MP3 Encoding -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.all.min.js"></script>
     <style>
-        :root {
-            --bg-dark: #0f172a;
-            --bg-sidebar: #1e293b;
-            --accent: #3b82f6;
-            --track-bg: #334155;
-            --clip-bg: #60a5fa;
-            --playhead-color: #ef4444;
-        }
-
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
+        
         body {
-            background-color: var(--bg-dark);
-            color: #f1f5f9;
-            overflow: hidden;
-            font-family: system-ui, -apple-system, sans-serif;
-            /* Prevents text selection across the app */
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
             user-select: none;
             -webkit-user-select: none;
         }
 
-        /* Allow selection only for file input label text if needed */
-        input[type="file"] {
-            user-select: auto;
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: #1e293b;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #475569;
-            border-radius: 4px;
-        }
-
-        .timeline-container {
-            position: relative;
-            background-image: 
-                linear-gradient(to right, #1e293b 1px, transparent 1px),
-                linear-gradient(to bottom, #1e293b 1px, transparent 1px);
-            background-size: 100px 100%, 100% 80px;
-            cursor: crosshair;
+        .slider-thumb::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #38bdf8;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #fff;
         }
 
-        #playhead {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 2px;
-            height: 100%;
-            background-color: var(--playhead-color);
-            z-index: 50;
-            pointer-events: none;
+        .visualizer-container {
+            height: 140px;
+            background: linear-gradient(to bottom, transparent, rgba(56, 189, 248, 0.05));
         }
 
-        #playhead-handle {
-            position: absolute;
-            top: -4px;
-            left: -8px;
-            width: 18px;
-            height: 24px;
-            background-color: var(--playhead-color);
-            clip-path: polygon(0% 0%, 100% 0%, 100% 60%, 50% 100%, 0% 60%);
-            cursor: ew-resize;
-            pointer-events: auto;
-            z-index: 51;
-            transition: transform 0.1s;
-        }
-        #playhead-handle:hover {
-            transform: scale(1.1);
+        .knob-label {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #94a3b8;
         }
 
-        .clip {
-            position: absolute;
-            height: 70px;
-            background: var(--clip-bg);
-            border: 1px solid #2563eb;
-            border-radius: 4px;
-            cursor: grab;
-            overflow: hidden;
-            user-select: none;
-            transition: outline 0.1s;
-        }
-        .clip:active {
-            cursor: grabbing;
+        .effect-strip {
+            transition: all 0.2s ease;
         }
 
-        .clip.selected {
-            outline: 2px solid #fff;
-            z-index: 10;
+        .effect-strip:hover {
+            background: rgba(56, 189, 248, 0.05);
+            border-color: rgba(56, 189, 248, 0.2);
         }
 
-        .clip canvas {
-            width: 100%;
-            height: 100%;
-            opacity: 0.8;
-            pointer-events: none;
+        .preset-tab {
+            transition: all 0.2s ease;
+            border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
-        .track-row {
-            height: 80px;
-            border-bottom: 1px solid #334155;
-            position: relative;
+        .preset-tab:hover {
+            background: rgba(56, 189, 248, 0.1);
+            border-color: rgba(56, 189, 248, 0.3);
         }
+
+        .preset-tab.active {
+            background: #38bdf8;
+            color: #000;
+            font-weight: 800;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+        }
+
+        @keyframes pulse-soft {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .anim-pulse { animation: pulse-soft 2s infinite; }
     </style>
 </head>
-<body class="h-screen flex flex-col">
+<body class="min-h-screen flex flex-col items-center p-4 md:p-8">
 
-    <!-- Header / Toolbar -->
-    <header class="h-14 border-b border-slate-700 bg-slate-900 flex items-center justify-between px-4 flex-shrink-0 z-50">
-        <div class="flex items-center gap-4">
-            <div class="flex items-center gap-2 text-blue-500 font-bold text-xl">
-                <i data-lucide="waves"></i>
-                <span>SonicEdit</span>
-            </div>
-            <div class="h-6 w-px bg-slate-700 mx-2"></div>
-            <div class="flex items-center gap-2">
-                <button id="btn-play" class="p-2 hover:bg-slate-800 rounded text-green-400 transition" title="Play (Space)">
-                    <i data-lucide="play"></i>
-                </button>
-                <button id="btn-pause" class="p-2 hover:bg-slate-800 rounded text-yellow-400 hidden transition" title="Pause">
-                    <i data-lucide="pause"></i>
-                </button>
-                <button id="btn-stop" class="p-2 hover:bg-slate-800 rounded text-red-400 transition" title="Stop">
-                    <i data-lucide="square"></i>
-                </button>
-            </div>
-            <div class="text-sm font-mono bg-black px-3 py-1 rounded text-green-500 border border-slate-800" id="time-display">
-                00:00:00.00
-            </div>
+    <header class="w-full max-w-6xl mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+            <h1 class="text-3xl font-black tracking-tighter text-sky-400 italic uppercase">Shyam's<span class="text-white"> Studio</span> <span class="text-xs bg-sky-500 text-white px-2 py-0.5 rounded ml-2 not-italic tracking-normal">PRO</span></h1>
+            <p class="text-slate-400 text-sm">Professional Web Audio Mastering Suite</p>
         </div>
-
-        <div class="flex items-center gap-3">
-            <!-- Zoom Controls -->
-            <div class="flex items-center bg-slate-800 rounded p-0.5 border border-slate-700">
-                <button id="btn-zoom-out" class="p-1.5 hover:bg-slate-700 rounded text-slate-300" title="Zoom Out (-)">
-                    <i data-lucide="zoom-out" class="w-4 h-4"></i>
-                </button>
-                <div id="zoom-text" class="px-2 text-[10px] font-mono text-slate-400 min-w-[40px] text-center">100%</div>
-                <button id="btn-zoom-in" class="p-1.5 hover:bg-slate-700 rounded text-slate-300" title="Zoom In (+)">
-                    <i data-lucide="zoom-in" class="w-4 h-4"></i>
-                </button>
-            </div>
-
-            <div class="h-6 w-px bg-slate-700 mx-1"></div>
-
-            <button id="btn-split" class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-sm transition" title="Split selected clip (S)">
-                <i data-lucide="scissors" class="w-4 h-4 text-blue-400"></i>
-                Split
-            </button>
-            <button id="btn-delete" class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-sm transition" title="Delete selected clip (Del)">
-                <i data-lucide="trash-2" class="w-4 h-4 text-red-400"></i>
-                Delete
-            </button>
-            
-            <div class="h-6 w-px bg-slate-700 mx-1"></div>
-            
-            <div class="flex gap-1">
-                <button id="btn-download-wav" class="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm font-medium transition">
-                    <i data-lucide="download" class="w-4 h-4"></i>
-                    WAV
-                </button>
-                <button id="btn-download-mp3" class="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium transition">
-                    <i data-lucide="music" class="w-4 h-4"></i>
-                    MP3
-                </button>
-            </div>
+        <div id="file-status" class="flex items-center gap-3">
+            <select id="preset-select" class="bg-slate-800 border border-slate-700 text-xs rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-sky-500">
+                <option value="none">Manual Mix</option>
+                <option value="radio">Old Radio</option>
+                <option value="lofi">Lo-Fi Chill</option>
+                <option value="stadium">Stadium Rock</option>
+                <option value="underwater">Underwater</option>
+                <option value="nightcore">Nightcore Speed</option>
+            </select>
+            <span class="px-3 py-2 rounded-lg bg-slate-800 text-[10px] font-mono border border-slate-700 uppercase tracking-widest text-slate-400" id="status-tag">No Signal</span>
         </div>
     </header>
 
-    <div class="flex flex-1 overflow-hidden">
-        <!-- Sidebar -->
-        <aside class="w-64 bg-slate-800 border-r border-slate-700 flex flex-col flex-shrink-0">
-            <div class="p-4 border-b border-slate-700">
-                <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">File Library</h2>
-                <label class="block">
-                    <input type="file" id="file-input" multiple accept="audio/*" class="block w-full text-sm text-slate-400
-                        file:mr-4 file:py-2 file:px-4
-                        file:rounded-full file:border-0
-                        file:text-sm file:font-semibold
-                        file:bg-blue-600 file:text-white
-                        hover:file:bg-blue-500 cursor-pointer
-                    ">
+    <main class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+        
+        <!-- Left Column: Master Controls -->
+        <div class="lg:col-span-1 space-y-6">
+            <div class="glass-panel p-6 rounded-2xl border-l-4 border-l-sky-500">
+                <h2 class="text-sm font-bold mb-4 uppercase tracking-widest text-slate-400">Transport</h2>
+                
+                <label data-info="Upload your audio file to start mixing." class="group relative flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-slate-700 rounded-xl cursor-pointer hover:border-sky-500 hover:bg-slate-800/50 transition-all mb-4">
+                    <div class="flex flex-col items-center text-center px-2">
+                        <span class="text-xs text-slate-400 group-hover:text-sky-400 font-bold uppercase">Import Audio</span>
+                    </div>
+                    <input id="audio-upload" type="file" class="hidden" accept="audio/*" />
                 </label>
-            </div>
-            <div id="file-list" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-                <div id="empty-library" class="text-center py-10 text-slate-500 italic text-sm">
-                    No files loaded yet.
+
+                <div class="space-y-4">
+                    <div class="flex items-center gap-2">
+                        <button id="btn-play" disabled data-info="Start or pause the audio playback." class="flex-1 bg-sky-600 hover:bg-sky-500 disabled:opacity-20 text-white font-black py-4 rounded-xl transition-all active:scale-95 shadow-lg shadow-sky-900/20 uppercase">
+                            Play
+                        </button>
+                        <button id="btn-stop" disabled data-info="Stop and reset timeline." class="p-4 bg-slate-700 hover:bg-slate-600 disabled:opacity-20 rounded-xl">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M5 5h10v10H5z"/></svg>
+                        </button>
+                    </div>
+
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-[10px] font-mono text-slate-500">
+                            <span id="time-current">0:00</span>
+                            <span id="time-total">0:00</span>
+                        </div>
+                        <input type="range" id="seek-bar" min="0" max="100" value="0" step="0.1" data-info="Scrub through the audio timeline." class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                    </div>
+
+                    <div class="pt-2 border-t border-white/5 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Format</label>
+                            <select id="export-format" class="bg-slate-800 text-[10px] text-sky-400 font-bold rounded px-2 py-1 outline-none border border-slate-700">
+                                <option value="wav">WAV</option>
+                                <option value="mp3">MP3</option>
+                            </select>
+                        </div>
+                        <button id="btn-download" disabled data-info="Download the final mixed version." class="w-full bg-white/5 hover:bg-white/10 text-white border border-white/10 disabled:opacity-10 py-3 rounded-xl text-xs font-bold transition-all uppercase tracking-widest">
+                            Export Master
+                        </button>
+                    </div>
+                    
+                    <div id="export-progress" class="hidden w-full bg-slate-800 rounded-full h-1 overflow-hidden">
+                        <div id="export-bar" class="bg-sky-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
                 </div>
             </div>
-        </aside>
 
-        <!-- Main Workspace -->
-        <main class="flex-1 flex flex-col bg-slate-950 overflow-hidden relative">
-            <div class="h-8 bg-slate-900 border-b border-slate-700 flex relative overflow-hidden select-none cursor-ew-resize" id="timeline-ruler">
-            </div>
-
-            <div class="flex-1 overflow-auto custom-scrollbar relative" id="tracks-viewport">
-                <div id="timeline" class="timeline-container min-w-full" style="width: 10000px; height: 100%;">
-                    <div id="playhead">
-                        <div id="playhead-handle" title="Drag to scrub"></div>
-                    </div>
-                    <div id="track-layers">
-                        <div class="track-row" data-track="0"></div>
-                        <div class="track-row" data-track="1"></div>
-                        <div class="track-row" data-track="2"></div>
-                        <div class="track-row" data-track="3"></div>
-                    </div>
+            <div class="glass-panel p-6 rounded-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="knob-label">Master Gain</span>
+                    <span id="val-master" class="text-xs font-mono text-sky-400">100%</span>
                 </div>
+                <input type="range" id="ctrl-master" min="0" max="1.5" step="0.01" value="1" data-info="Adjusts the final volume output." class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider-thumb">
+                
+                <div class="mt-6 flex justify-between items-center mb-4">
+                    <span class="knob-label">Playback Speed</span>
+                    <span id="val-speed" class="text-xs font-mono text-sky-400">1.0x</span>
+                </div>
+                <input type="range" id="ctrl-speed" min="0.5" max="2.0" step="0.05" value="1" data-info="Changes tempo and pitch." class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider-thumb">
             </div>
-        </main>
-    </div>
-
-    <!-- Modals -->
-    <div id="loading-overlay" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] hidden">
-        <div class="text-center">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4 mx-auto"></div>
-            <p id="loading-text" class="text-slate-300">Processing audio...</p>
+            
+            <div class="visualizer-container rounded-2xl overflow-hidden glass-panel">
+                <canvas id="visualizer" class="w-full h-full"></canvas>
+            </div>
         </div>
-    </div>
+
+        <!-- Right Column: Mixer Console -->
+        <div class="lg:col-span-3 space-y-6 flex flex-col">
+            <div class="glass-panel p-6 rounded-2xl flex-grow">
+                <div class="flex items-center justify-between mb-8 pb-4 border-b border-white/5">
+                    <h2 class="text-lg font-black tracking-tight uppercase italic text-slate-300">Mixer Console</h2>
+                    <button id="reset-effects" data-info="Reset all sliders." class="text-[10px] font-bold text-slate-500 hover:text-white uppercase tracking-tighter">Clear All Inserts</button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    
+                    <!-- NEW: Denoise Strip -->
+                    <div class="effect-strip space-y-4 p-4 rounded-xl bg-slate-800/30 border border-white/5" data-info="Denoise: Removes background hiss, hum, and noise floor. Higher settings sharpen clarity.">
+                        <div class="flex justify-between items-start">
+                            <label class="knob-label text-emerald-400">Denoise</label>
+                            <input type="checkbox" id="bypass-denoise" checked class="w-3 h-3 accent-emerald-500">
+                        </div>
+                        <input type="range" id="ctrl-denoise" min="0" max="100" step="1" value="0" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-400">
+                        <div class="text-[9px] text-slate-500 uppercase font-bold text-right" id="val-denoise">CLEAN</div>
+                    </div>
+
+                    <div class="effect-strip space-y-4 p-4 rounded-xl bg-slate-800/30 border border-white/5" data-info="Drive: Adds warm harmonic saturation.">
+                        <div class="flex justify-between items-start">
+                            <label class="knob-label text-red-400">Drive</label>
+                            <input type="checkbox" id="bypass-drive" checked class="w-3 h-3 accent-red-500">
+                        </div>
+                        <input type="range" id="ctrl-drive" min="0" max="100" step="1" value="0" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-red-400">
+                        <div class="text-[9px] text-slate-500 uppercase font-bold text-right" id="val-drive">0%</div>
+                    </div>
+
+                    <div class="effect-strip space-y-4 p-4 rounded-xl bg-slate-800/30 border border-white/5" data-info="Punch: Professional dynamics compression.">
+                        <div class="flex justify-between items-start">
+                            <label class="knob-label text-purple-400">Punch</label>
+                            <input type="checkbox" id="bypass-compress" checked class="w-3 h-3 accent-purple-500">
+                        </div>
+                        <input type="range" id="ctrl-compress" min="-60" max="0" step="1" value="0" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-400">
+                        <div class="text-[9px] text-slate-500 uppercase font-bold text-right" id="val-compress">OFF</div>
+                    </div>
+
+                    <div class="effect-strip space-y-4 p-4 rounded-xl bg-slate-800/30 border border-white/5" data-info="Echo: Rhythmic delay repeats.">
+                        <div class="flex justify-between items-start">
+                            <label class="knob-label text-amber-400">Echo</label>
+                            <input type="checkbox" id="bypass-echo" checked class="w-3 h-3 accent-amber-500">
+                        </div>
+                        <input type="range" id="ctrl-echo" min="0" max="0.8" step="0.01" value="0" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400">
+                        <div class="text-[9px] text-slate-500 uppercase font-bold text-right" id="val-echo">0%</div>
+                    </div>
+
+                    <div class="md:col-span-2 lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-4 p-6 bg-slate-900/50 rounded-2xl border border-white/5">
+                        <div class="space-y-3" data-info="Bass: Low-end frequencies (80Hz).">
+                            <div class="flex justify-between">
+                                <label class="knob-label">Bass</label>
+                                <span id="val-bass" class="text-[10px] font-mono">0dB</span>
+                            </div>
+                            <input type="range" id="ctrl-bass" min="-20" max="20" value="0" class="w-full h-1 bg-slate-700 rounded-lg appearance-none accent-white">
+                        </div>
+                        <div class="space-y-3" data-info="Mids: Vocal range (1kHz).">
+                            <div class="flex justify-between">
+                                <label class="knob-label">Mids</label>
+                                <span id="val-vocal" class="text-[10px] font-mono">0dB</span>
+                            </div>
+                            <input type="range" id="ctrl-vocal" min="-20" max="20" value="0" class="w-full h-1 bg-slate-700 rounded-lg appearance-none accent-white">
+                        </div>
+                        <div class="space-y-3" data-info="Highs: Clarity and sparkle (4kHz).">
+                            <div class="flex justify-between">
+                                <label class="knob-label">Highs</label>
+                                <span id="val-studio" class="text-[10px] font-mono">0dB</span>
+                            </div>
+                            <input type="range" id="ctrl-studio" min="-20" max="20" value="0" class="w-full h-1 bg-slate-700 rounded-lg appearance-none accent-white">
+                        </div>
+                    </div>
+
+                    <div class="md:col-span-2 lg:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="p-4 bg-slate-800/20 rounded-xl effect-strip" data-info="Hallway: Combines reverb and LPF.">
+                            <label class="knob-label mb-3 block text-sky-400">Hallway Space</label>
+                            <input type="range" id="ctrl-hallway" min="0" max="100" step="1" value="0" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400">
+                            <div class="text-[9px] text-slate-500 font-bold mt-2" id="val-hallway">0%</div>
+                        </div>
+                        <div class="p-4 bg-slate-800/20 rounded-xl effect-strip" data-info="Reverb: Large room simulation.">
+                            <label class="knob-label mb-3 block text-white">Reverb Mix</label>
+                            <input type="range" id="ctrl-reverb" min="0" max="1" step="0.01" value="0" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-white">
+                            <div class="text-[9px] text-slate-500 font-bold mt-2" id="val-reverb">DRY</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- QUICK MODES TABS -->
+                <div class="mb-6">
+                    <label class="knob-label mb-3 block text-slate-500">Mastering Modes</label>
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                        <button class="preset-tab py-2 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-400" onclick="applyMode('none', this)">Manual</button>
+                        <button class="preset-tab py-2 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-400" onclick="applyMode('studio', this)" data-info="STUDIO: Pristine clarity and noise-free clean vocals.">Studio</button>
+                        <button class="preset-tab py-2 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-400" onclick="applyMode('opera', this)" data-info="OPERA: Grand auditorium space.">Opera</button>
+                        <button class="preset-tab py-2 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-400" onclick="applyMode('magic', this)" data-info="MAGIC: High-end shimmer.">Magic</button>
+                        <button class="preset-tab py-2 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-400" onclick="applyMode('hype', this)" data-info="HYPE: Bass and energy.">Hype</button>
+                        <button class="preset-tab py-2 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-400" onclick="applyMode('echo', this)" data-info="ECHO: Heavy delay repeats.">Echo</button>
+                    </div>
+                </div>
+
+                <!-- Dynamic Insight Bar -->
+                <div class="bg-slate-900 border border-white/5 p-3 rounded-lg flex items-center gap-3">
+                    <div class="w-2 h-2 rounded-full bg-sky-500 shadow-[0_0_8px_rgba(56,189,248,0.5)]"></div>
+                    <div id="insight-text" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hover to learn...</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Pro Tips Library -->
+    <footer class="w-full max-w-6xl mt-4 grid grid-cols-1 md:grid-cols-3 gap-6 opacity-80 pb-12">
+        <div class="glass-panel p-5 rounded-2xl border border-white/5">
+            <h4 class="text-xs font-black text-sky-400 uppercase mb-3 flex items-center gap-2">Tip 1: Denoise Smoothly</h4>
+            <p class="text-[11px] text-slate-400 leading-relaxed italic">The 'Denoise' filter is most effective on vocals. If it sounds 'muffled', back it off to 30% and boost 'Highs'.</p>
+        </div>
+        <div class="glass-panel p-5 rounded-2xl border border-white/5">
+            <h4 class="text-xs font-black text-emerald-400 uppercase mb-3 flex items-center gap-2">Tip 2: Spatiality</h4>
+            <p class="text-[11px] text-slate-400 leading-relaxed italic">Keep Bass centered for mono compatibility. Only pan melodic elements for a professional wide mix.</p>
+        </div>
+        <div class="glass-panel p-5 rounded-2xl border border-white/5">
+            <h4 class="text-xs font-black text-red-400 uppercase mb-3 flex items-center gap-2">Tip 3: Gain Staging</h4>
+            <p class="text-[11px] text-slate-400 leading-relaxed italic">If the visualizer turns pure bright cyan-white, your signal is too hot. Lower the Master Gain.</p>
+        </div>
+    </footer>
+
+    <div id="toast" class="fixed bottom-8 right-8 transform translate-y-20 opacity-0 transition-all duration-300 bg-sky-600 text-white px-6 py-3 rounded-full shadow-2xl z-50 text-[10px] font-black uppercase tracking-widest"></div>
 
     <script>
-        // Disable Right Click context menu
-        window.addEventListener('contextmenu', (e) => e.preventDefault());
-
-        const BASE_PIXELS_PER_SECOND = 100;
-        let PIXELS_PER_SECOND = 100;
-
-        const state = {
-            audioCtx: new (window.AudioContext || window.webkitAudioContext)(),
-            files: [], 
-            clips: [], 
-            selectedClipId: null,
-            isPlaying: false, 
-            isScrubbing: false,
-            currentTime: 0, 
-            startTime: 0, 
-            activeSources: [],
-            zoom: 1.0 // 1.0 = 100px per second
+        // Security
+        document.addEventListener('contextmenu', (e) => e.preventDefault());
+        document.onkeydown = function(e) {
+            if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74)) || (e.ctrlKey && e.keyCode == 85)) return false;
         };
 
-        const fileInput = document.getElementById('file-input');
-        const fileList = document.getElementById('file-list');
-        const emptyLibrary = document.getElementById('empty-library');
-        const timeline = document.getElementById('timeline');
-        const playhead = document.getElementById('playhead');
-        const playheadHandle = document.getElementById('playhead-handle');
-        const timeDisplay = document.getElementById('time-display');
-        const btnPlay = document.getElementById('btn-play');
-        const btnPause = document.getElementById('btn-pause');
-        const btnStop = document.getElementById('btn-stop');
-        const btnSplit = document.getElementById('btn-split');
-        const btnDelete = document.getElementById('btn-delete');
-        const btnZoomIn = document.getElementById('btn-zoom-in');
-        const btnZoomOut = document.getElementById('btn-zoom-out');
-        const zoomText = document.getElementById('zoom-text');
-        const btnDownloadWav = document.getElementById('btn-download-wav');
-        const btnDownloadMp3 = document.getElementById('btn-download-mp3');
-        const loadingOverlay = document.getElementById('loading-overlay');
-        const trackRows = document.querySelectorAll('.track-row');
-        const timelineRuler = document.getElementById('timeline-ruler');
-        const tracksViewport = document.getElementById('tracks-viewport');
+        // Audio Engine
+        let audioCtx, audioBuffer, sourceNode, isPlaying = false, startTime = 0, offsetTime = 0;
+        let nodes = { 
+            master: null, limiter: null, bass: null, vocal: null, studio: null, 
+            drive: null, filter: null, compressor: null, reverbNode: null, reverbGain: null, 
+            analyzer: null, delayNode: null, delayGain: null,
+            // NEW: Denoise Nodes
+            noiseGate: null, noiseHPF: null, noiseLPF: null
+        };
+        let params = { 
+            master: 1, speed: 1, bass: 0, vocal: 0, studio: 0, drive: 0, 
+            filter: 20000, compress: 0, pan: 0, echo: 0, reverb: 0, 
+            denoise: 0, 
+            bypassHallway: false, bypassDrive: false, bypassCompress: false, bypassEcho: false, bypassDenoise: false 
+        };
 
-        lucide.createIcons();
+        const elements = {
+            upload: document.getElementById('audio-upload'), playBtn: document.getElementById('btn-play'), stopBtn: document.getElementById('btn-stop'),
+            downloadBtn: document.getElementById('btn-download'), formatSelect: document.getElementById('export-format'), seekBar: document.getElementById('seek-bar'),
+            timeCurr: document.getElementById('time-current'), timeTotal: document.getElementById('time-total'), statusTag: document.getElementById('status-tag'),
+            exportBar: document.getElementById('export-bar'), exportProgress: document.getElementById('export-progress'), insightText: document.getElementById('insight-text')
+        };
 
-        // --- Zooming Logic ---
-        function updateZoom(newZoom) {
-            state.zoom = Math.max(0.2, Math.min(10, newZoom));
-            PIXELS_PER_SECOND = BASE_PIXELS_PER_SECOND * state.zoom;
-            zoomText.textContent = `${Math.round(state.zoom * 100)}%`;
-            const maxDuration = Math.max(100, ...state.clips.map(c => c.startTime + c.duration)) + 60;
-            timeline.style.width = (maxDuration * PIXELS_PER_SECOND) + 'px';
-            renderRuler();
-            state.clips.forEach(clip => {
-                clip.element.style.left = (clip.startTime * PIXELS_PER_SECOND) + 'px';
-                clip.element.style.width = (clip.duration * PIXELS_PER_SECOND) + 'px';
-                drawWaveform(clip.element.querySelector('canvas'), clip.buffer);
-            });
-            updateUI();
+        document.querySelectorAll('[data-info]').forEach(el => {
+            el.onmouseenter = () => { elements.insightText.innerText = el.getAttribute('data-info'); elements.insightText.classList.add('text-sky-400'); };
+            el.onmouseleave = () => { elements.insightText.innerText = "Hover to learn..."; elements.insightText.classList.remove('text-sky-400'); };
+        });
+
+        function formatTime(s) { let m = Math.floor(s/60); s = Math.floor(s%60); return `${m}:${s<10?'0':''}${s}`; }
+
+        function initAudio() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            nodes.master = audioCtx.createGain();
+            nodes.analyzer = audioCtx.createAnalyser(); nodes.analyzer.fftSize = 256;
+            nodes.limiter = audioCtx.createDynamicsCompressor(); nodes.limiter.threshold.value = -1;
+            
+            // Core Filters
+            nodes.bass = audioCtx.createBiquadFilter(); nodes.bass.type = 'lowshelf'; nodes.bass.frequency.value = 80;
+            nodes.vocal = audioCtx.createBiquadFilter(); nodes.vocal.type = 'peaking'; nodes.vocal.frequency.value = 1000;
+            nodes.studio = audioCtx.createBiquadFilter(); nodes.studio.type = 'highshelf'; nodes.studio.frequency.value = 4000;
+            
+            // Denoise (HPF for rumble, LPF for hiss, Gate for silence)
+            nodes.noiseHPF = audioCtx.createBiquadFilter(); nodes.noiseHPF.type = 'highpass'; nodes.noiseHPF.frequency.value = 20;
+            nodes.noiseLPF = audioCtx.createBiquadFilter(); nodes.noiseLPF.type = 'lowpass'; nodes.noiseLPF.frequency.value = 20000;
+            nodes.noiseGate = audioCtx.createDynamicsCompressor();
+            nodes.noiseGate.threshold.value = -100; // Deep floor
+            nodes.noiseGate.ratio.value = 20;
+            nodes.noiseGate.attack.value = 0.01;
+            nodes.noiseGate.release.value = 0.2;
+
+            nodes.drive = audioCtx.createWaveShaper(); nodes.drive.oversample = '4x';
+            nodes.filter = audioCtx.createBiquadFilter(); nodes.filter.type = 'lowpass'; nodes.filter.frequency.value = 20000;
+            nodes.compressor = audioCtx.createDynamicsCompressor();
+            nodes.delayNode = audioCtx.createDelay(2.0); nodes.delayGain = audioCtx.createGain(); nodes.delayGain.gain.value = 0;
+            nodes.reverbGain = audioCtx.createGain(); nodes.reverbGain.gain.value = 0;
         }
 
-        btnZoomIn.onclick = () => updateZoom(state.zoom * 1.25);
-        btnZoomOut.onclick = () => updateZoom(state.zoom * 0.8);
-
-        // --- Navigation ---
-        function seekTo(pixels) {
-            state.currentTime = Math.max(0, pixels / PIXELS_PER_SECOND);
-            updateUI();
-            if (state.isPlaying) { stopPlayback(); startPlayback(); }
+        async function createImpulse(ctx) {
+            const len = ctx.sampleRate * 3.5, buffer = ctx.createBuffer(2, len, ctx.sampleRate);
+            for (let ch = 0; ch < 2; ch++) { let data = buffer.getChannelData(ch); for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4.5); }
+            const n = ctx.createConvolver(); n.buffer = buffer; return n;
         }
 
-        const handleNavigation = (e) => {
-            const rect = timeline.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            seekTo(x);
+        function makeDistCurve(amt) {
+            let k = amt, n = 44100, curve = new Float32Array(n), deg = Math.PI / 180;
+            for (let i = 0; i < n; i++) { let x = (i * 2) / n - 1; curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x)); }
+            return curve;
+        }
+
+        elements.upload.onchange = async (e) => {
+            const file = e.target.files[0]; if (!file) return;
+            initAudio(); elements.statusTag.innerText = "Syncing...";
+            try {
+                audioBuffer = await audioCtx.decodeAudioData(await file.arrayBuffer());
+                elements.playBtn.disabled = elements.stopBtn.disabled = elements.downloadBtn.disabled = false;
+                elements.timeTotal.innerText = formatTime(audioBuffer.duration);
+                elements.statusTag.innerText = "Ready"; showToast("Shyam's Studio Loaded");
+            } catch (err) { elements.statusTag.innerText = "Error"; }
         };
 
-        timelineRuler.onmousedown = (e) => {
-            state.isScrubbing = true;
-            handleNavigation(e);
-            const onMouseMove = (mE) => state.isScrubbing && handleNavigation(mE);
-            const onMouseUp = () => { state.isScrubbing = false; window.removeEventListener('mousemove', onMouseMove); };
-            window.addEventListener('mousemove', onMouseMove);
-            window.addEventListener('mouseup', onMouseUp, { once: true });
-        };
-
-        playheadHandle.onmousedown = (e) => {
-            e.preventDefault(); e.stopPropagation();
-            state.isScrubbing = true;
-            const onMouseMove = (mE) => state.isScrubbing && handleNavigation(mE);
-            const onMouseUp = () => { state.isScrubbing = false; window.removeEventListener('mousemove', onMouseMove); };
-            window.addEventListener('mousemove', onMouseMove);
-            window.addEventListener('mouseup', onMouseUp, { once: true });
-        };
-
-        timeline.onclick = (e) => {
-            if (e.target === timeline || e.target.classList.contains('track-row')) handleNavigation(e);
-        };
-
-        // --- Files ---
-        fileInput.onchange = async (e) => {
-            const files = Array.from(e.target.files);
-            showLoading("Decoding audio files...");
-            for (const file of files) {
-                try {
-                    const arrayBuffer = await file.arrayBuffer();
-                    const audioBuffer = await state.audioCtx.decodeAudioData(arrayBuffer);
-                    const fileId = Math.random().toString(36).substr(2, 9);
-                    const fileData = { id: fileId, name: file.name, buffer: audioBuffer };
-                    state.files.push(fileData);
-                    addToFileLibrary(fileData);
-                    emptyLibrary.classList.add('hidden');
-                } catch (err) { console.error(err); }
+        function connectGraph(src, n, dest) {
+            src.disconnect();
+            let head = src;
+            
+            // Denoise inserted first in chain
+            if (!params.bypassDenoise) {
+                head.connect(n.noiseHPF); n.noiseHPF.connect(n.noiseLPF); n.noiseLPF.connect(n.noiseGate);
+                head = n.noiseGate;
             }
-            hideLoading();
-            fileInput.value = '';
-        };
 
-        function addToFileLibrary(file) {
-            const div = document.createElement('div');
-            div.className = "p-2 bg-slate-700 hover:bg-slate-600 rounded cursor-grab flex items-center gap-2 group transition text-sm overflow-hidden";
-            div.draggable = true;
-            div.dataset.fileId = file.id;
-            div.innerHTML = `
-                <i data-lucide="file-audio" class="w-4 h-4 text-blue-400 flex-shrink-0"></i>
-                <span class="truncate flex-1">${file.name}</span>
-            `;
-            div.ondragstart = (e) => e.dataTransfer.setData('fileId', file.id);
-            fileList.appendChild(div);
-            lucide.createIcons();
+            head.connect(n.bass); head = n.bass;
+            head.connect(n.vocal); head = n.vocal;
+            head.connect(n.studio); head = n.studio;
+
+            if (!params.bypassDrive) { head.connect(n.drive); head = n.drive; }
+            head.connect(n.filter); head = n.filter;
+            if (!params.bypassCompress) { head.connect(n.compressor); head = n.compressor; }
+            head.connect(n.master); head = n.master;
+
+            if (n.reverbNode && !params.bypassHallway) { src.connect(n.reverbNode); n.reverbNode.connect(n.reverbGain); n.reverbGain.connect(n.master); }
+            if (!params.bypassEcho) { src.connect(n.delayNode); n.delayNode.connect(n.delayGain); n.delayGain.connect(n.delayNode); n.delayGain.connect(n.master); }
+            
+            n.master.connect(n.limiter); n.limiter.connect(dest);
+            if (dest === audioCtx.destination) n.master.connect(n.analyzer);
         }
 
-        // --- Timeline ---
-        trackRows.forEach(row => {
-            row.ondragover = (e) => { e.preventDefault(); row.classList.add('bg-slate-800/30'); };
-            row.ondragleave = () => row.classList.remove('bg-slate-800/30');
-            row.ondrop = (e) => {
-                e.preventDefault(); row.classList.remove('bg-slate-800/30');
-                const fileId = e.dataTransfer.getData('fileId');
-                if (!fileId) return;
-                const file = state.files.find(f => f.id === fileId);
-                const rect = row.getBoundingClientRect();
-                addClipToTimeline(file, parseInt(row.dataset.track), (e.clientX - rect.left) / PIXELS_PER_SECOND);
+        function playAt(seconds) {
+            if (isPlaying) stopAudio();
+            sourceNode = audioCtx.createBufferSource(); sourceNode.buffer = audioBuffer; sourceNode.playbackRate.value = params.speed;
+            offsetTime = seconds; startTime = audioCtx.currentTime;
+            if (!nodes.reverbNode) { createImpulse(audioCtx).then(node => { nodes.reverbNode = node; connectGraph(sourceNode, nodes, audioCtx.destination); }); }
+            else connectGraph(sourceNode, nodes, audioCtx.destination);
+            sourceNode.start(0, offsetTime); isPlaying = true; elements.playBtn.innerText = "PAUSE";
+            updateSeeker(); drawVisualizer();
+        }
+
+        function stopAudio() {
+            if (sourceNode) { try { sourceNode.stop(); } catch(e){} sourceNode.disconnect(); }
+            isPlaying = false; elements.playBtn.innerText = "PLAY";
+            offsetTime += (audioCtx.currentTime - startTime) * params.speed;
+        }
+
+        elements.playBtn.onclick = () => { if (audioCtx.state === 'suspended') audioCtx.resume(); if (isPlaying) stopAudio(); else playAt(offsetTime >= audioBuffer.duration ? 0 : offsetTime); };
+        elements.stopBtn.onclick = () => { stopAudio(); offsetTime = 0; elements.seekBar.value = 0; elements.timeCurr.innerText = "0:00"; };
+
+        elements.seekBar.oninput = (e) => elements.timeCurr.innerText = formatTime((e.target.value / 100) * audioBuffer.duration);
+        elements.seekBar.onchange = (e) => { let t = (e.target.value / 100) * audioBuffer.duration; if (isPlaying) playAt(t); else offsetTime = t; };
+
+        function updateSeeker() {
+            if (!isPlaying) return;
+            let current = offsetTime + (audioCtx.currentTime - startTime) * params.speed;
+            if (current >= audioBuffer.duration) { stopAudio(); offsetTime = 0; return; }
+            elements.seekBar.value = (current / audioBuffer.duration) * 100; elements.timeCurr.innerText = formatTime(current);
+            requestAnimationFrame(updateSeeker);
+        }
+
+        const setupCtrl = (id, valId, key, action, unit = '') => {
+            document.getElementById(id).oninput = (e) => {
+                let v = parseFloat(e.target.value); params[key] = v; if (audioCtx) action(v);
+                let txt = v + unit;
+                if (key === 'reverb') txt = v === 0 ? "DRY" : Math.round(v*100) + "%";
+                if (key === 'master') txt = Math.round(v*100) + "%";
+                if (key === 'echo') txt = Math.round(v*100) + "%";
+                if (key === 'compress') txt = v === 0 ? "OFF" : v + "dB";
+                if (key === 'denoise') txt = v === 0 ? "CLEAN" : v + "%";
+                document.getElementById(valId).innerText = txt;
+            };
+        };
+
+        setupCtrl('ctrl-master', 'val-master', 'master', v => nodes.master.gain.setTargetAtTime(v, audioCtx.currentTime, 0.1));
+        setupCtrl('ctrl-speed', 'val-speed', 'speed', v => { if(sourceNode) sourceNode.playbackRate.value = v; });
+        setupCtrl('ctrl-bass', 'val-bass', 'bass', v => nodes.bass.gain.setTargetAtTime(v, audioCtx.currentTime, 0.1), 'dB');
+        setupCtrl('ctrl-vocal', 'val-vocal', 'vocal', v => nodes.vocal.gain.setTargetAtTime(v, audioCtx.currentTime, 0.1), 'dB');
+        setupCtrl('ctrl-studio', 'val-studio', 'studio', v => nodes.studio.gain.setTargetAtTime(v, audioCtx.currentTime, 0.1), 'dB');
+        setupCtrl('ctrl-drive', 'val-drive', 'drive', v => nodes.drive.curve = v === 0 ? null : makeDistCurve(v), '%');
+        setupCtrl('ctrl-reverb', 'val-reverb', 'reverb', v => nodes.reverbGain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.1));
+        setupCtrl('ctrl-echo', 'val-echo', 'echo', v => nodes.delayGain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.1));
+        setupCtrl('ctrl-compress', 'val-compress', 'compress', v => nodes.compressor.threshold.setTargetAtTime(v, audioCtx.currentTime, 0.1), 'dB');
+
+        // Denoise Logic
+        document.getElementById('ctrl-denoise').oninput = (e) => {
+            let v = parseFloat(e.target.value); params.denoise = v;
+            document.getElementById('val-denoise').innerText = v === 0 ? "CLEAN" : v + "%";
+            if (!audioCtx) return;
+            // High Pass for rumble (up to 120Hz)
+            nodes.noiseHPF.frequency.setTargetAtTime(20 + (v * 1), audioCtx.currentTime, 0.1);
+            // Low Pass for hiss (down to 8kHz)
+            nodes.noiseLPF.frequency.setTargetAtTime(20000 - (v * 120), audioCtx.currentTime, 0.1);
+            // Gate threshold (-100dB down to -30dB)
+            nodes.noiseGate.threshold.setTargetAtTime(-100 + (v * 0.7), audioCtx.currentTime, 0.1);
+        };
+
+        document.getElementById('ctrl-hallway').oninput = (e) => {
+            let v = parseFloat(e.target.value) / 100; params.hallway = v;
+            document.getElementById('val-hallway').innerText = Math.round(v*100) + "%";
+            if (!audioCtx) return;
+            nodes.reverbGain.gain.setTargetAtTime(v * 0.9, audioCtx.currentTime, 0.1);
+            nodes.filter.frequency.setTargetAtTime(20000 - (v * 18000), audioCtx.currentTime, 0.1);
+        };
+
+        ['hallway', 'drive', 'compress', 'echo', 'denoise'].forEach(name => {
+            document.getElementById(`bypass-${name}`).onchange = (e) => {
+                params[`bypass${name.charAt(0).toUpperCase() + name.slice(1)}`] = !e.target.checked;
+                if (isPlaying) playAt(offsetTime + (audioCtx.currentTime - startTime) * params.speed);
             };
         });
 
-        function addClipToTimeline(file, track, startTime) {
-            const clipId = Math.random().toString(36).substr(2, 9);
-            const clipEl = document.createElement('div');
-            clipEl.className = 'clip';
-            clipEl.dataset.id = clipId;
-            clipEl.style.width = (file.buffer.duration * PIXELS_PER_SECOND) + 'px';
-            clipEl.style.left = (startTime * PIXELS_PER_SECOND) + 'px';
-            const canvas = document.createElement('canvas');
-            clipEl.appendChild(canvas);
-            const clipData = { id: clipId, fileId: file.id, track, startTime, duration: file.buffer.duration, element: clipEl, buffer: file.buffer, offset: 0 };
-            state.clips.push(clipData);
-            document.querySelector(`.track-row[data-track="${track}"]`).appendChild(clipEl);
-            drawWaveform(canvas, file.buffer);
-            setupClipInteractions(clipData);
-            selectClip(clipId);
-        }
+        window.applyMode = function(mode, btn) {
+            document.querySelectorAll('.preset-tab').forEach(t => t.classList.remove('active')); btn.classList.add('active');
+            document.getElementById('reset-effects').click();
+            if (mode === 'studio') { setV('ctrl-bass', 2); setV('ctrl-studio', 8); setV('ctrl-compress', -14); setV('ctrl-denoise', 25); }
+            else if (mode === 'opera') { setV('ctrl-reverb', 0.7); setV('ctrl-vocal', 10); }
+            else if (mode === 'magic') { setV('ctrl-studio', 15); setV('ctrl-echo', 0.5); setV('ctrl-hallway', 15); }
+            else if (mode === 'hype') { setV('ctrl-bass', 15); setV('ctrl-drive', 15); setV('ctrl-compress', -25); }
+            else if (mode === 'echo') { setV('ctrl-echo', 0.6); setV('ctrl-reverb', 0.4); }
+        };
 
-        function drawWaveform(canvas, buffer) {
-            const width = canvas.width = canvas.parentElement.clientWidth;
-            const height = canvas.height = canvas.parentElement.clientHeight;
-            const ctx = canvas.getContext('2d');
-            const data = buffer.getChannelData(0);
-            const step = Math.ceil(data.length / width);
-            const amp = height / 2;
-            ctx.clearRect(0, 0, width, height);
-            ctx.strokeStyle = '#60a5fa';
-            ctx.beginPath();
-            ctx.moveTo(0, amp);
-            for (let i = 0; i < width; i++) {
-                let min = 1.0, max = -1.0;
-                for (let j = 0; j < step; j++) {
-                    const d = data[(i * step) + j];
-                    if (d < min) min = d; if (d > max) max = d;
-                }
-                ctx.lineTo(i, (1 + min) * amp); ctx.lineTo(i, (1 + max) * amp);
-            }
-            ctx.stroke();
-        }
+        function setV(id, v) { let el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input')); }
+        document.getElementById('reset-effects').onclick = () => {
+            ['ctrl-hallway', 'ctrl-bass', 'ctrl-vocal', 'ctrl-studio', 'ctrl-drive', 'ctrl-compress', 'ctrl-echo', 'ctrl-reverb', 'ctrl-denoise'].forEach(id => setV(id, 0));
+            setV('ctrl-speed', 1); setV('ctrl-master', 1);
+        };
 
-        function setupClipInteractions(clip) {
-            let dragging = false, sX = 0, sL = 0;
-            clip.element.onmousedown = (e) => {
-                if (e.button !== 0) return; // Allow only left-click dragging
-                e.stopPropagation(); selectClip(clip.id);
-                dragging = true; sX = e.clientX; sL = clip.startTime * PIXELS_PER_SECOND;
-                const onMM = (mE) => {
-                    if (!dragging) return;
-                    let nL = Math.max(0, sL + (mE.clientX - sX));
-                    clip.element.style.left = nL + 'px';
-                    clip.startTime = nL / PIXELS_PER_SECOND;
-                };
-                const onMU = () => { dragging = false; window.removeEventListener('mousemove', onMM); };
-                window.addEventListener('mousemove', onMM);
-                window.addEventListener('mouseup', onMU, { once: true });
+        elements.downloadBtn.onclick = async () => {
+            if (!audioBuffer) return;
+            elements.downloadBtn.disabled = true; elements.exportProgress.classList.remove('hidden');
+            let format = elements.formatSelect.value;
+            const offline = new OfflineAudioContext(2, audioBuffer.length / params.speed, audioBuffer.sampleRate);
+            const oN = { 
+                master: offline.createGain(), limiter: offline.createDynamicsCompressor(), 
+                bass: offline.createBiquadFilter(), vocal: offline.createBiquadFilter(), studio: offline.createBiquadFilter(), 
+                drive: offline.createWaveShaper(), filter: offline.createBiquadFilter(), compressor: offline.createDynamicsCompressor(), 
+                panner: offline.createStereoPanner(), delayNode: offline.createDelay(2.0), delayGain: offline.createGain(), 
+                reverbNode: await createImpulse(offline), reverbGain: offline.createGain(),
+                noiseHPF: offline.createBiquadFilter(), noiseLPF: offline.createBiquadFilter(), noiseGate: offline.createDynamicsCompressor()
             };
-        }
 
-        function selectClip(id) {
-            state.selectedClipId = id;
-            state.clips.forEach(c => c.element.classList.toggle('selected', c.id === id));
-        }
+            // Copy Real-time Filter State to Offline Nodes
+            oN.master.gain.value = params.master;
+            oN.bass.type = 'lowshelf'; oN.bass.gain.value = params.bass;
+            oN.vocal.type = 'peaking'; oN.vocal.gain.value = params.vocal;
+            oN.studio.type = 'highshelf'; oN.studio.gain.value = params.studio;
+            oN.drive.curve = params.drive === 0 || params.bypassDrive ? null : makeDistCurve(params.drive);
+            oN.filter.type = 'lowpass'; oN.filter.frequency.value = params.filter;
+            oN.compressor.threshold.value = params.compress;
+            oN.delayGain.gain.value = params.echo;
+            oN.reverbGain.gain.value = params.reverb;
+            
+            // Denoise Parameters
+            oN.noiseHPF.type = 'highpass'; oN.noiseHPF.frequency.value = 20 + (params.denoise * 1);
+            oN.noiseLPF.type = 'lowpass'; oN.noiseLPF.frequency.value = 20000 - (params.denoise * 120);
+            oN.noiseGate.threshold.value = -100 + (params.denoise * 0.7); oN.noiseGate.ratio.value = 20;
 
-        // --- Playback ---
-        btnPlay.onclick = startPlayback;
-        btnPause.onclick = stopPlayback;
-        btnStop.onclick = () => { stopPlayback(); state.currentTime = 0; updateUI(); };
-
-        function startPlayback() {
-            if (state.isPlaying) return;
-            if (state.audioCtx.state === 'suspended') state.audioCtx.resume();
-            state.isPlaying = true;
-            btnPlay.classList.add('hidden'); btnPause.classList.remove('hidden');
-            state.startTime = state.audioCtx.currentTime - state.currentTime;
-            state.clips.forEach(clip => {
-                if (clip.startTime + clip.duration > state.currentTime) {
-                    const source = state.audioCtx.createBufferSource();
-                    source.buffer = clip.buffer;
-                    source.connect(state.audioCtx.destination);
-                    const offset = Math.max(0, state.currentTime - clip.startTime);
-                    const when = Math.max(0, clip.startTime - state.currentTime);
-                    source.start(state.audioCtx.currentTime + when, offset + (clip.offset || 0));
-                    state.activeSources.push(source);
-                }
+            if (params.hallway > 0 && !params.bypassHallway) { oN.reverbGain.gain.value = params.hallway * 0.9; oN.filter.frequency.value = 20000 - (params.hallway * 18000); }
+            
+            const oS = offline.createBufferSource(); oS.buffer = audioBuffer; oS.playbackRate.value = params.speed;
+            connectGraph(oS, oN, offline.destination); oS.start(0);
+            offline.startRendering().then(rendered => {
+                let blob = format === 'mp3' ? encodeMP3(rendered) : encodeWAV(rendered);
+                let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = "shyams_master." + format; a.click();
+                elements.exportBar.style.width = '100%'; setTimeout(() => { elements.exportProgress.classList.add('hidden'); elements.downloadBtn.disabled = false; }, 500);
             });
-            requestAnimationFrame(updateLoop);
-        }
-
-        function stopPlayback() {
-            state.isPlaying = false;
-            btnPlay.classList.remove('hidden'); btnPause.classList.add('hidden');
-            state.activeSources.forEach(s => { try { s.stop(); } catch(e) {} });
-            state.activeSources = [];
-        }
-
-        function updateLoop() {
-            if (!state.isPlaying) return;
-            state.currentTime = state.audioCtx.currentTime - state.startTime;
-            updateUI();
-            requestAnimationFrame(updateLoop);
-        }
-
-        function updateUI() {
-            playhead.style.left = (state.currentTime * PIXELS_PER_SECOND) + 'px';
-            const s = Math.floor(state.currentTime);
-            const ms = Math.floor((state.currentTime % 1) * 100);
-            timeDisplay.textContent = `${pad(Math.floor(s/3600))}:${pad(Math.floor((s%3600)/60))}:${pad(s%60)}.${pad(ms)}`;
-        }
-        function pad(n) { return n.toString().padStart(2, '0'); }
-
-        // --- Tools ---
-        btnSplit.onclick = () => {
-            if (!state.selectedClipId) return;
-            const clip = state.clips.find(c => c.id === state.selectedClipId);
-            if (state.currentTime > clip.startTime && state.currentTime < clip.startTime + clip.duration) {
-                const sP = state.currentTime - clip.startTime;
-                const nID = Math.random().toString(36).substr(2, 9);
-                const nD = clip.duration - sP;
-                clip.duration = sP; clip.element.style.width = (sP * PIXELS_PER_SECOND) + 'px';
-                const nEl = document.createElement('div');
-                nEl.className = 'clip'; nEl.dataset.id = nID;
-                nEl.style.width = (nD * PIXELS_PER_SECOND) + 'px';
-                nEl.style.left = (state.currentTime * PIXELS_PER_SECOND) + 'px';
-                const canvas = document.createElement('canvas'); nEl.appendChild(canvas);
-                const nClip = { id: nID, fileId: clip.fileId, track: clip.track, startTime: state.currentTime, duration: nD, element: nEl, buffer: clip.buffer, offset: (clip.offset || 0) + sP };
-                state.clips.push(nClip); clip.element.parentElement.appendChild(nEl);
-                drawWaveform(clip.element.querySelector('canvas'), clip.buffer);
-                drawWaveform(canvas, clip.buffer);
-                setupClipInteractions(nClip); selectClip(nID);
-            }
         };
 
-        btnDelete.onclick = () => {
-            const idx = state.clips.findIndex(c => c.id === state.selectedClipId);
-            if (idx !== -1) { state.clips[idx].element.remove(); state.clips.splice(idx, 1); state.selectedClipId = null; }
-        };
-
-        // --- Exporting ---
-        async function getMixedBuffer() {
-            if (state.clips.length === 0) return null;
-            const maxD = Math.max(...state.clips.map(c => c.startTime + c.duration));
-            const oCtx = new OfflineAudioContext(2, 44100 * maxD, 44100);
-            for (const c of state.clips) {
-                const s = oCtx.createBufferSource(); s.buffer = c.buffer; s.connect(oCtx.destination);
-                s.start(c.startTime, c.offset || 0, c.duration);
-            }
-            return await oCtx.startRendering();
+        function encodeWAV(buffer) {
+            let n = buffer.numberOfChannels, sr = buffer.sampleRate, bits = 16, len = buffer.length * n * 2, ab = new ArrayBuffer(44 + len), view = new DataView(ab);
+            const wS = (o, s) => { for(let i=0; i<s.length; i++) view.setUint8(o+i, s.charCodeAt(i)); };
+            wS(0, 'RIFF'); view.setUint32(4, 36 + len, true); wS(8, 'WAVE'); wS(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+            view.setUint16(22, n, true); view.setUint32(24, sr, true); view.setUint32(28, sr * n * 2, true); view.setUint16(32, n * 2, true); view.setUint16(34, bits, true); wS(36, 'data'); view.setUint32(40, len, true);
+            for(let i=0, offset=44; i<buffer.length; i++) { for(let c=0; c<n; c++) { let s = Math.max(-1, Math.min(1, buffer.getChannelData(c)[i])); view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true); offset += 2; } }
+            return new Blob([ab], { type: 'audio/wav' });
         }
 
-        btnDownloadWav.onclick = async () => {
-            const buf = await getMixedBuffer();
-            if (!buf) return;
-            showLoading("Exporting WAV...");
-            const blob = bufferToWave(buf, buf.length);
-            downloadBlob(blob, 'sonic-edit.wav');
-            hideLoading();
-        };
-
-        btnDownloadMp3.onclick = async () => {
-            const buf = await getMixedBuffer();
-            if (!buf) return;
-            showLoading("Encoding MP3...");
-            setTimeout(() => {
-                const blob = bufferToMp3(buf);
-                downloadBlob(blob, 'sonic-edit.mp3');
-                hideLoading();
-            }, 100);
-        };
-
-        function downloadBlob(blob, name) {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+        function encodeMP3(rendered) {
+            let ch = rendered.numberOfChannels, encoder = new lamejs.Mp3Encoder(ch, rendered.sampleRate, 128), mp3 = [];
+            const fTo16 = (arr) => { let out = new Int16Array(arr.length); for(let i=0; i<arr.length; i++) { let s = Math.max(-1, Math.min(1, arr[i])); out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF; } return out; };
+            let l = fTo16(rendered.getChannelData(0)), r = ch > 1 ? fTo16(rendered.getChannelData(1)) : l;
+            for(let i=0; i<l.length; i += 1152) { let buf = encoder.encodeBuffer(l.subarray(i, i+1152), r.subarray(i, i+1152)); if(buf.length > 0) mp3.push(buf); }
+            let f = encoder.flush(); if(f.length > 0) mp3.push(f); return new Blob(mp3, { type: 'audio/mp3' });
         }
 
-        function bufferToWave(abuffer, len) {
-            let n = abuffer.numberOfChannels, l = len * n * 2 + 44, b = new ArrayBuffer(l), v = new DataView(b), p = 0;
-            const s32 = (d) => { v.setUint32(p, d, true); p += 4; };
-            const s16 = (d) => { v.setUint16(p, d, true); p += 2; };
-            s32(0x46464952); s32(l - 8); s32(0x45564157); s32(0x20746d66); s32(16); s16(1); s16(n); s32(abuffer.sampleRate); s32(abuffer.sampleRate * 2 * n); s16(n * 2); s16(16); s32(0x61746164); s32(l - p - 4);
-            for(let i=0; i<len; i++) {
-                for(let c=0; c<n; c++) {
-                    let s = Math.max(-1, Math.min(1, abuffer.getChannelData(c)[i]));
-                    v.setInt16(p, (s < 0 ? s * 32768 : s * 32767), true); p += 2;
-                }
-            }
-            return new Blob([b], {type: "audio/wav"});
+        const canvas = document.getElementById('visualizer'), ctx = canvas.getContext('2d');
+        function drawVisualizer() {
+            if(!isPlaying) return; requestAnimationFrame(drawVisualizer);
+            let bl = nodes.analyzer.frequencyBinCount, data = new Uint8Array(bl); nodes.analyzer.getByteFrequencyData(data);
+            let w = canvas.width = canvas.clientWidth, h = canvas.height = canvas.clientHeight;
+            ctx.clearRect(0,0,w,h); let bw = (w/bl)*2.5, bh, x=0;
+            for(let i=0; i<bl; i++) { bh = data[i]/2; ctx.fillStyle = `hsla(${200+(i/bl)*40}, 80%, 60%, ${0.3+data[i]/255})`; ctx.fillRect(x, h-bh, bw, bh); x += bw+1; }
         }
 
-        function bufferToMp3(audioBuffer, bitrate = 128) {
-            const channels = audioBuffer.numberOfChannels;
-            const sampleRate = audioBuffer.sampleRate;
-            const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, bitrate);
-            const mp3Data = [];
-            const samplesL = audioBuffer.getChannelData(0);
-            const samplesR = channels > 1 ? audioBuffer.getChannelData(1) : samplesL;
-            const l16 = new Int16Array(samplesL.length);
-            const r16 = new Int16Array(samplesR.length);
-            for (let i = 0; i < samplesL.length; i++) {
-                l16[i] = samplesL[i] < 0 ? samplesL[i] * 32768 : samplesL[i] * 32767;
-                r16[i] = samplesR[i] < 0 ? samplesR[i] * 32768 : samplesR[i] * 32767;
-            }
-            const blockSize = 1152;
-            for (let i = 0; i < l16.length; i += blockSize) {
-                const lc = l16.subarray(i, i + blockSize);
-                const rc = r16.subarray(i, i + blockSize);
-                const mp3buf = (channels === 2) ? mp3encoder.encodeBuffer(lc, rc) : mp3encoder.encodeBuffer(lc);
-                if (mp3buf.length > 0) mp3Data.push(mp3buf);
-            }
-            const flush = mp3encoder.flush();
-            if (flush.length > 0) mp3Data.push(flush);
-            return new Blob(mp3Data, { type: 'audio/mp3' });
-        }
-
-        function showLoading(text) { document.getElementById('loading-text').textContent = text; loadingOverlay.classList.remove('hidden'); }
-        function hideLoading() { loadingOverlay.classList.add('hidden'); }
-
-        // Setup Ruler
-        function renderRuler() {
-            timelineRuler.innerHTML = '';
-            const containerWidth = parseInt(timeline.style.width) || 10000;
-            const maxSeconds = Math.ceil(containerWidth / PIXELS_PER_SECOND);
-            let interval = 1;
-            if (state.zoom < 0.5) interval = 5;
-            if (state.zoom < 0.2) interval = 10;
-            for (let i = 0; i < maxSeconds; i += interval) {
-                const m = document.createElement('div');
-                m.className = 'absolute border-l border-slate-700 h-full flex items-end pb-1 px-1 text-[10px] text-slate-400 pointer-events-none';
-                m.style.left = (i * PIXELS_PER_SECOND) + 'px'; 
-                m.textContent = i + 's';
-                timelineRuler.appendChild(m);
-            }
-        }
-
-        renderRuler();
-
-        // Enhanced Keyboard Handlers
-        window.onkeydown = (e) => {
-            // Block Common Developer Tool Shortcuts
-            if (e.keyCode === 123) { // F12
-                e.preventDefault();
-                return false;
-            }
-            if (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74 || e.keyCode === 67)) { // Ctrl+Shift+I, J, C
-                e.preventDefault();
-                return false;
-            }
-            if (e.ctrlKey && e.keyCode === 85) { // Ctrl+U (View Source)
-                e.preventDefault();
-                return false;
-            }
-
-            // Normal Shortcuts
-            if (e.code === 'Space') { e.preventDefault(); state.isPlaying ? stopPlayback() : startPlayback(); }
-            if (e.code === 'Delete' || e.code === 'Backspace') btnDelete.onclick();
-            if (e.code === 'KeyS') btnSplit.onclick();
-            if (e.key === '+') btnZoomIn.onclick();
-            if (e.key === '-') btnZoomOut.onclick();
-        };
-
+        function showToast(m) { let t = document.getElementById('toast'); t.innerText = m; t.classList.remove('translate-y-20', 'opacity-0'); setTimeout(() => t.classList.add('translate-y-20', 'opacity-0'), 3000); }
     </script>
 </body>
 </html>
